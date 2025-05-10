@@ -100,8 +100,8 @@ def generate_full_schedule(force_pattern=None):
     if "back" in pattern:
         schedule["back"] = rand_time(*pattern["back"])
 
-    memory["today_schedule"] = schedule
-    save_memory(MEMORY_FILE, memory)
+    memory["today_schedule"] = schedule  # ここでメモリを更新
+    save_memory(MEMORY_FILE, memory)  # メモリの更新を保存
 
 
 async def get_gemini_response(user_message):
@@ -136,16 +136,16 @@ async def event_trigger():
     current_time = time.time()
     if current_time - last_message_time >= 600:
         channel = discord.utils.get(bot.get_all_channels(), name="living-room")
-        if channel:
-            if is_just_back():
-                user_message = "situation: you came back home now"
-                response_text = await get_gemini_response(user_message)
-                await channel.send(response_text)
-            else:
-                with open(EVENT_FILE, "r", encoding="utf-8") as f:
-                    events_data = json.load(f)
-                event_message = random.choice(events_data["events"])
-                await channel.send(event_message)
+if channel:
+    if is_just_back():
+        user_message = "situation: you came back home now"
+        response_text = await get_gemini_response(user_message)
+        await channel.send(response_text)
+    else:
+        with open(EVENT_FILE, "r", encoding="utf-8") as f:
+            events_data = json.load(f)
+        event_message = random.choice(events_data["events"])
+        await channel.send(event_message)
 
 
 @bot.event
@@ -160,8 +160,8 @@ async def on_ready():
         channel = discord.utils.get(bot.get_all_channels(), name="living-room")
         if channel:
             await channel.send("はじめまして、シエルです。今日からこちらでお世話になります。よろしくお願いします。")
-        memory["is_first_login"] = False
-        save_memory(MEMORY_FILE, memory)
+        memory["is_first_login"] = False  # 最初のログイン後に False に設定
+        save_memory(MEMORY_FILE, memory)  # 保存
 
     try:
         synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
@@ -178,14 +178,13 @@ async def dice(interaction: discord.Interaction, message: str):
     await interaction.response.send_message(f"{message}\n判定結果: {result}")
 
 
-@bot.tree.command(name="schedule", description="今日のスケジュールを表示する", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="schedule", description="今日のスケジュールを表示", guild=discord.Object(id=GUILD_ID))
 async def schedule(interaction: discord.Interaction):
-    schedule = memory.get("today_schedule")
-    if not schedule:
-        await interaction.response.send_message("スケジュールがまだ設定されてないみたい……！")
-        return
-    lines = [f"{k}：{v}" for k, v in schedule.items()]
-    await interaction.response.send_message("今日のスケジュールはこちら！\n" + "\n".join(lines))
+    await interaction.response.defer()  # 応答を一時保留
+    schedule = memory.get("today_schedule", {})
+    lines = [f"{key.capitalize()}: {value}" for key, value in schedule.items()]
+    await interaction.followup.send("今日のスケジュール：\n" + "\n".join(lines))
+
 
 
 @bot.event
