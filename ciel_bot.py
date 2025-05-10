@@ -37,7 +37,7 @@ prompt = load_prompt(PROMPT_FILE)
 memory = load_memory(MEMORY_FILE)
 
 def is_currently_active():
-    now = datetime.now(JST)
+    now = datetime.now(JST)  # JSTタイムゾーンで取得
     schedule = memory.get("today_schedule", {})
     wake_str = schedule.get("wake", "09:00")
     sleep_str = schedule.get("sleep", "02:00")
@@ -46,14 +46,15 @@ def is_currently_active():
     sleep_time = datetime.strptime(sleep_str, "%H:%M").time()
 
     today = now.date()
-    wake_dt = datetime.combine(today, wake_time)
-    sleep_dt = datetime.combine(today, sleep_time)
+    wake_dt = datetime.combine(today, wake_time, tzinfo=JST)  # タイムゾーンを指定してdatetimeを作成
+    sleep_dt = datetime.combine(today, sleep_time, tzinfo=JST)  # タイムゾーンを指定してdatetimeを作成
 
     # 深夜2時とかなら sleep_dt は次の日にしないとおかしい
     if sleep_dt <= wake_dt:
         sleep_dt += timedelta(days=1)
 
     return wake_dt <= now < sleep_dt
+
 
 
 def is_just_back():
@@ -166,7 +167,7 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
 
     if "today_schedule" not in memory or not memory["today_schedule"]:
-        generate_full_schedule()
+        pattern = next(p for p in patterns if p["type"] == "off_day")
     
     # 初回起動チェック
     if memory.get("is_first_login", True):
