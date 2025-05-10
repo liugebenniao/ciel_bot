@@ -162,6 +162,9 @@ async def event_trigger():
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+
+    if "today_schedule" not in memory or not memory["today_schedule"]:
+        generate_full_schedule()
     
     # 初回起動チェック
     if memory.get("is_first_login", True):
