@@ -18,8 +18,12 @@ def load_memory(file_path):
         return {}
 
 def save_memory(file_path, data):
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[ERROR] メモリ保存に失敗: {e}")
+
 
 def is_active(start_hour, end_hour):
     now = datetime.now()
