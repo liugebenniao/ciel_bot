@@ -1,4 +1,3 @@
-# ciel_bot.py（修正版）
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
@@ -85,7 +84,7 @@ def generate_full_schedule(force_pattern=None):
     patterns = [
         {"type": "day_shift", "wake": (7, 9), "leave": (9, 10), "back": (18, 20), "sleep": (23, 1)},
         {"type": "night_shift", "wake": (12, 14), "leave": (20, 22), "back": (5, 6), "sleep": (6, 8)},
-        {"type": "off_day", "wake": (9, 12), "sleep": (1, 4)},
+        {"type": "off_day", "wake": (9, 12), "sleep": (1, 2)},
     ]
 
     pattern = next(p for p in patterns if p["type"] == force_pattern) if force_pattern else random.choice(patterns)
@@ -100,8 +99,8 @@ def generate_full_schedule(force_pattern=None):
     if "back" in pattern:
         schedule["back"] = rand_time(*pattern["back"])
 
-    memory["today_schedule"] = schedule  # ここでメモリを更新
-    save_memory(MEMORY_FILE, memory)  # メモリの更新を保存
+    memory["today_schedule"] = schedule
+    save_memory(MEMORY_FILE, memory)
 
 
 async def get_gemini_response(user_message):
@@ -160,14 +159,15 @@ async def on_ready():
         channel = discord.utils.get(bot.get_all_channels(), name="living-room")
         if channel:
             await channel.send("はじめまして、シエルです。今日からこちらでお世話になります。よろしくお願いします。")
-        memory["is_first_login"] = False  # 最初のログイン後に False に設定
-        save_memory(MEMORY_FILE, memory)  # 保存
+        memory["is_first_login"] = False
+        save_memory(MEMORY_FILE, memory)
 
     try:
         synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
         print(f"Synced {len(synced)} command(s)!")
     except Exception as e:
         print(e)
+        await announce(f"[ERROR] スラッシュコマンドの同期に失敗: {e}")
 
     event_trigger.start()
 
@@ -180,11 +180,19 @@ async def dice(interaction: discord.Interaction, message: str):
 
 @bot.tree.command(name="schedule", description="今日のスケジュールを表示", guild=discord.Object(id=GUILD_ID))
 async def schedule(interaction: discord.Interaction):
-    await interaction.response.defer()  # 応答を一時保留
+    await interaction.response.defer()
     schedule = memory.get("today_schedule", {})
     lines = [f"{key.capitalize()}: {value}" for key, value in schedule.items()]
     await interaction.followup.send("今日のスケジュール：\n" + "\n".join(lines))
 
+
+@bot.tree.command(name="testmode", description="テストモードをオンまたはオフにします", guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(enabled="true でオン、false でオフ")
+async def testmode(interaction: discord.Interaction, enabled: bool):
+    memory["test_mode"] = enabled
+    save_memory(MEMORY_FILE, memory)
+    status = "オン" if enabled else "オフ"
+    await interaction.response.send_message(f"テストモードを{status}にしました。")
 
 
 @bot.event
@@ -197,7 +205,7 @@ async def on_message(message):
     if message.content.startswith("はじめまして、シエルです。"):
         return
 
-    if not is_currently_active():
+    if not memory.get("test_mode", False) and not is_currently_active():
         return
 
     if message.channel.name != "living-room":
@@ -223,4 +231,4 @@ if __name__ == "__main__":
         bot.run(TOKEN)
     except Exception as e:
         print(f"Bot Error: {e}")
-        os.system("kill")
+        asyncio.run(announce(f"[ERROR] Bot 起動エラー: {e}"))
