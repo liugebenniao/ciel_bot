@@ -17,11 +17,12 @@ def load_memory(file_path):
     else:
         return {}
 
-def save_memory(file_path, data):
+def save_memory(file_path, memory):
     try:
         with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            json.dump(memory, f, indent=2, ensure_ascii=False)
     except Exception as e:
+        # announce は非同期なのでエラー処理としては print のほうが無難
         print(f"[ERROR] メモリ保存に失敗: {e}")
 
 
