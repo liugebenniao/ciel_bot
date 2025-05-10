@@ -55,6 +55,10 @@ def is_currently_active():
 
     return wake_dt <= now < sleep_dt
 
+def rand_time(start_hour, end_hour):
+    hour = random.randint(start_hour, end_hour - 1)
+    minute = random.choice([0, 15, 30, 45])
+    return f"{hour:02d}:{minute:02d}"
 
 
 def is_just_back():
@@ -152,6 +156,11 @@ async def event_trigger():
     if current_time - last_message_time >= 600:  # 600秒 = 10分
         channel = discord.utils.get(bot.get_all_channels(), name="living-room")
         if channel:
+            if is_just_back():
+                user_message = "situation: you came back home now"
+                response_text = await get_gemini_response(user_message)
+                await channel.send(response_text)
+        else:
             # 定型文を送信
             with open(EVENT_FILE, "r", encoding="utf-8") as f:
                 events_data = json.load(f)
@@ -163,25 +172,24 @@ async def event_trigger():
 async def on_ready():
     print(f"Logged in as {bot.user}")
 
-if "today_schedule" not in memory or not memory["today_schedule"]:
-    generate_full_schedule(force_pattern="off_day")
+    if "today_schedule" not in memory or not memory["today_schedule"]:
+        generate_full_schedule(force_pattern="off_day")
 
-    
-    # 初回起動チェック
-if memory.get("is_first_login", True):
-    channel = discord.utils.get(bot.get_all_channels(), name="living-room")
-    if channel:
-        await channel.send("はじめまして、シエルです。今日からこちらでお世話になります。よろしくお願いします。")
-    memory["is_first_login"] = False
-    save_memory(MEMORY_FILE, memory)
+    if memory.get("is_first_login", True):
+        channel = discord.utils.get(bot.get_all_channels(), name="living-room")
+        if channel:
+            await channel.send("はじめまして、シエルです。今日からこちらでお世話になります。よろしくお願いします。")
+        memory["is_first_login"] = False
+        save_memory(MEMORY_FILE, memory)
 
-    
     try:
         synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
         print(f"Synced {len(synced)} command(s)!")
     except Exception as e:
         print(e)
+    
     event_trigger.start()
+
 
 
 # スラッシュコマンド: ダイスを振る
@@ -194,7 +202,6 @@ async def dice(interaction: discord.Interaction, message: str):
 
 
 # メッセージに反応
-@bot.event
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -212,16 +219,18 @@ async def on_message(message):
 
     user_message = message.content
     response_text = await get_gemini_response(user_message)
-
- if message.content == memory.get("last_message"):
+    
+    if message.content == memory.get("last_message"):
         return
-     
+    
     # シエルらしい応答
     await message.channel.send(response_text)
 
     # メモリに保存
-    memory["last_message"] = message.content
+    memory["last_user_message"] = message.content
+    memory["last_bot_response"] = response_text
     save_memory(MEMORY_FILE, memory)
+
     
     # ユーザーからのメッセージや他のBotが送ったメッセージがあったかどうか
     # 他のメッセージがあればその時点でlast_message_timeを更新
