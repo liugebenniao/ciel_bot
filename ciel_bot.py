@@ -73,20 +73,17 @@ def is_just_back():
 
     return abs((now - back_dt).total_seconds()) <= 300  # 5分以内
 
-def generate_full_schedule():
+def generate_full_schedule(force_pattern=None):
     patterns = [
         {"type": "day_shift", "wake": (7, 9), "leave": (9, 10), "back": (18, 20), "sleep": (23, 1)},
         {"type": "night_shift", "wake": (12, 14), "leave": (20, 22), "back": (5, 6), "sleep": (6, 8)},
         {"type": "off_day", "wake": (9, 12), "sleep": (1, 2)},
     ]
-    pattern = random.choice(patterns)
 
-def rand_time(h1, h2):
-    if h1 > h2:  # h1がh2より大きい場合に入れ替える
-        h1, h2 = h2, h1
-    h = random.randint(h1, h2)
-    m = random.choice([0, 15, 30, 45])
-    return f"{h:02}:{m:02}"
+    if force_pattern:
+        pattern = next(p for p in patterns if p["type"] == force_pattern)
+    else:
+        pattern = random.choice(patterns)
 
     schedule = {
         "pattern": pattern["type"],
@@ -166,18 +163,18 @@ async def event_trigger():
 async def on_ready():
     print(f"Logged in as {bot.user}")
 
-    if "today_schedule" not in memory or not memory["today_schedule"]:
-        pattern = ["off_day"]
+   if "today_schedule" not in memory or not memory["today_schedule"]:
+    generate_full_schedule(force_pattern="off_day")
+
     
     # 初回起動チェック
-    if memory.get("is_first_login", True):
-        channel = discord.utils.get(bot.get_all_channels(), name="living-room")
-        if channel:
-            await channel.send("はじめまして、シエルです。今日からこちらでお世話になります。よろしくお願いします。")
-        
-        # 初回ログイン後、フラグを更新
-        memory["is_first_login"] = False
-        save_memory(MEMORY_FILE, memory)
+if memory.get("is_first_login", True):
+    channel = discord.utils.get(bot.get_all_channels(), name="living-room")
+    if channel:
+        await channel.send("はじめまして、シエルです。今日からこちらでお世話になります。よろしくお願いします。")
+    memory["is_first_login"] = False
+    save_memory(MEMORY_FILE, memory)
+
     
     try:
         synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
@@ -198,11 +195,14 @@ async def dice(interaction: discord.Interaction, message: str):
 
 # メッセージに反応
 @bot.event
+@bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
 
-    await bot.process_commands(message)
+    # 初回挨拶ならスキップ（無限ループ対策）
+    if message.content.startswith("はじめまして、シエルです。"):
+        return
 
     if not is_currently_active():
         return
@@ -212,6 +212,10 @@ async def on_message(message):
 
     user_message = message.content
     response_text = await get_gemini_response(user_message)
+
+ if message.content == memory.get("last_message"):
+        return
+     
     # シエルらしい応答
     await message.channel.send(response_text)
 
