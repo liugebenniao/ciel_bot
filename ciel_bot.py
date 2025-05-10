@@ -8,7 +8,6 @@ import random
 import json
 import google.generativeai as genai
 from my_utils import load_prompt, load_memory, save_memory
-import os
 from keep_alive import keep_alive
 keep_alive()
 import time
@@ -28,6 +27,8 @@ EVENT_FILE = "events/ciel_events.json"
 
 JST = timezone(timedelta(hours=9))
 
+last_message_time = 0
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -36,24 +37,40 @@ prompt = load_prompt(PROMPT_FILE)
 memory = load_memory(MEMORY_FILE)
 
 def is_currently_active():
-    now = datetime.now(JST).time()
+    now = datetime.now(JST)
     schedule = memory.get("today_schedule", {})
-    wake = datetime.strptime(schedule.get("wake", "09:00"), "%H:%M").time()
-    sleep = datetime.strptime(schedule.get("sleep", "02:00"), "%H:%M").time()
+    wake_str = schedule.get("wake", "09:00")
+    sleep_str = schedule.get("sleep", "02:00")
 
-    if wake < sleep:
-        return wake <= now < sleep
-    else:
-        return now >= wake or now < sleep
+    wake_time = datetime.strptime(wake_str, "%H:%M").time()
+    sleep_time = datetime.strptime(sleep_str, "%H:%M").time()
+
+    today = now.date()
+    wake_dt = datetime.combine(today, wake_time)
+    sleep_dt = datetime.combine(today, sleep_time)
+
+    # 深夜2時とかなら sleep_dt は次の日にしないとおかしい
+    if sleep_dt <= wake_dt:
+        sleep_dt += timedelta(days=1)
+
+    return wake_dt <= now < sleep_dt
+
 
 def is_just_back():
-    now = datetime.now(JST).time()
+    now = datetime.now(JST)
     back_str = memory.get("today_schedule", {}).get("back")
     if not back_str:
         return False
-    back = datetime.strptime(back_str, "%H:%M").time()
-    delta = timedelta(minutes=5)
-    return abs((datetime.combine(datetime.today(), now) - datetime.combine(datetime.today(), back)).total_seconds()) <= delta.total_seconds()
+    back_time = datetime.strptime(back_str, "%H:%M").time()
+    
+    # 同じ日で一度 datetime に変換
+    back_dt = datetime.combine(now.date(), back_time)
+    
+    # 深夜（帰宅時間が now より未来）だったら前日扱いにする
+    if back_dt > now:
+        back_dt -= timedelta(days=1)
+
+    return abs((now - back_dt).total_seconds()) <= 300  # 5分以内
 
 def generate_full_schedule():
     patterns = [
@@ -81,13 +98,6 @@ def generate_full_schedule():
     memory["today_schedule"] = schedule
     save_memory(MEMORY_FILE, memory)
 
-def load_memory(file_path):
-    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-        with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        return {}
-
 
 # Geminiへのリクエスト関数
 async def get_gemini_response(user_message):
@@ -112,7 +122,7 @@ async def get_gemini_response(user_message):
         },
     ]
 )
-        full_prompt = f"{prompt}\n\nユーザー: {user_message}\nキャロル:"
+        full_prompt = f"{prompt}\n\nユーザー: {user_message}\nシエル:"
         response = await asyncio.wait_for(
     asyncio.to_thread(model.generate_content, full_prompt),
     timeout=10
@@ -203,9 +213,10 @@ async def on_message(message):
     memory["last_message"] = message.content
     save_memory(MEMORY_FILE, memory)
     
-        # ユーザーからのメッセージや他のBotが送ったメッセージがあったかどうか
+    # ユーザーからのメッセージや他のBotが送ったメッセージがあったかどうか
     # 他のメッセージがあればその時点でlast_message_timeを更新
     if message.content:
+        global last_message_time
         last_message_time = time.time()
 
 
