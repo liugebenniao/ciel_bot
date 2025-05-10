@@ -136,16 +136,16 @@ async def event_trigger():
     current_time = time.time()
     if current_time - last_message_time >= 600:
         channel = discord.utils.get(bot.get_all_channels(), name="living-room")
-if channel:
-    if is_just_back():
-        user_message = "situation: you came back home now"
-        response_text = await get_gemini_response(user_message)
-        await channel.send(response_text)
-    else:
-        with open(EVENT_FILE, "r", encoding="utf-8") as f:
-            events_data = json.load(f)
-        event_message = random.choice(events_data["events"])
-        await channel.send(event_message)
+        if channel:
+            if is_just_back():
+                user_message = "situation: you came back home now"
+                response_text = await get_gemini_response(user_message)
+                await channel.send(response_text)
+            else:
+                with open(EVENT_FILE, "r", encoding="utf-8") as f:
+                    events_data = json.load(f)
+                event_message = random.choice(events_data["events"])
+                await channel.send(event_message)
 
 
 @bot.event
