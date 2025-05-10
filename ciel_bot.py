@@ -167,7 +167,7 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
 
     if "today_schedule" not in memory or not memory["today_schedule"]:
-        pattern = next(p for p in patterns if p["type"] == "off_day")
+        pattern = ["off_day"]
     
     # 初回起動チェック
     if memory.get("is_first_login", True):
