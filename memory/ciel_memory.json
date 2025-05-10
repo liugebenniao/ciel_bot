@@ -1,3 +1,4 @@
 {
-"is_first_login": true
+  "is_first_login": false,
+  "test_mode": true
 }
