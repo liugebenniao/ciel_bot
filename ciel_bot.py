@@ -1,0 +1,217 @@
+#ciel_bot.py
+import discord
+from discord.ext import commands, tasks
+from discord import app_commands
+import os
+import asyncio
+import random
+import json
+import google.generativeai as genai
+from my_utils import load_prompt, load_memory, save_memory
+import os
+from keep_alive import keep_alive
+keep_alive()
+import time
+from datetime import datetime, timedelta, timezone
+
+TOKEN = os.environ["CIEL_TOKEN"]
+GUILD_ID = os.environ["GUILD_ID"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+
+# Gemini API設定
+genai.configure(api_key=GEMINI_API_KEY)
+
+# シエルの設定
+PROMPT_FILE = "prompts/ciel.json"
+MEMORY_FILE = "memory/ciel.json"
+EVENT_FILE = "events/ciel_events.json"
+
+JST = timezone(timedelta(hours=9))
+
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+prompt = load_prompt(PROMPT_FILE)
+memory = load_memory(MEMORY_FILE)
+
+def is_currently_active():
+    now = datetime.now(JST).time()
+    schedule = memory.get("today_schedule", {})
+    wake = datetime.strptime(schedule.get("wake", "09:00"), "%H:%M").time()
+    sleep = datetime.strptime(schedule.get("sleep", "02:00"), "%H:%M").time()
+
+    if wake < sleep:
+        return wake <= now < sleep
+    else:
+        return now >= wake or now < sleep
+
+def is_just_back():
+    now = datetime.now(JST).time()
+    back_str = memory.get("today_schedule", {}).get("back")
+    if not back_str:
+        return False
+    back = datetime.strptime(back_str, "%H:%M").time()
+    delta = timedelta(minutes=5)
+    return abs((datetime.combine(datetime.today(), now) - datetime.combine(datetime.today(), back)).total_seconds()) <= delta.total_seconds()
+
+def generate_full_schedule():
+    patterns = [
+        {"type": "day_shift", "wake": (7, 9), "leave": (9, 10), "back": (18, 20), "sleep": (23, 1)},
+        {"type": "night_shift", "wake": (12, 14), "leave": (20, 22), "back": (5, 6), "sleep": (6, 8)},
+        {"type": "off_day", "wake": (9, 12), "sleep": (0, 2)},
+    ]
+    pattern = random.choice(patterns)
+
+    def rand_time(h1, h2):
+        h = random.randint(h1, h2)
+        m = random.choice([0, 15, 30, 45])
+        return f"{h:02}:{m:02}"
+
+    schedule = {
+        "pattern": pattern["type"],
+        "wake": rand_time(*pattern["wake"]),
+        "sleep": rand_time(*pattern["sleep"]),
+    }
+    if "leave" in pattern:
+        schedule["leave"] = rand_time(*pattern["leave"])
+    if "back" in pattern:
+        schedule["back"] = rand_time(*pattern["back"])
+
+    memory["today_schedule"] = schedule
+    save_memory(MEMORY_FILE, memory)
+
+def load_memory(file_path):
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    else:
+        return {}
+
+
+# Geminiへのリクエスト関数
+async def get_gemini_response(user_message):
+    try:
+        model = genai.GenerativeModel(model_name="gemini-2.0-flash",
+        safety_settings=[
+        {
+            "category": "HARM_CATEGORY_HARASSMENT",
+            "threshold": "BLOCK_NONE"
+        },
+        {
+            "category": "HARM_CATEGORY_HATE_SPEECH",
+            "threshold": "BLOCK_NONE"
+        },
+        {
+            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            "threshold": "BLOCK_NONE"
+        },
+        {
+            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+            "threshold": "BLOCK_NONE"
+        },
+    ]
+)
+        full_prompt = f"{prompt}\n\nユーザー: {user_message}\nキャロル:"
+        response = await asyncio.wait_for(
+    asyncio.to_thread(model.generate_content, full_prompt),
+    timeout=10
+)
+        return response.text.strip()
+    except asyncio.TimeoutError:
+        print("Geminiの応答がタイムアウトしました")
+        return "ごめん、ちょっと考えすぎちゃったみたい……"
+    except Exception as e:
+        error_message = f"ごめん、今は返事できないみたい……（エラー: {e}）"
+        print(f"Geminiエラー: {e}", flush=True)
+        return error_message
+
+
+# イベントを自動発生させる
+@tasks.loop(minutes=30)
+async def event_trigger():
+    global last_message_time
+    
+    if not is_currently_active():
+        return
+    
+    # 現在時刻を取得
+    current_time = time.time()
+    
+    # 最後のメッセージから10分以上経っていれば定型文を送信
+    if current_time - last_message_time >= 600:  # 600秒 = 10分
+        channel = discord.utils.get(bot.get_all_channels(), name="living-room")
+        if channel:
+            # 定型文を送信
+            with open(EVENT_FILE, "r", encoding="utf-8") as f:
+                events_data = json.load(f)
+            event_message = random.choice(events_data["events"])
+            await channel.send(event_message)
+        
+# 起動時に実行
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+    
+    # 初回起動チェック
+    if memory.get("is_first_login", True):
+        channel = discord.utils.get(bot.get_all_channels(), name="living-room")
+        if channel:
+            await channel.send("はじめまして、シエルです。今日からこちらでお世話になります。よろしくお願いします。")
+        
+        # 初回ログイン後、フラグを更新
+        memory["is_first_login"] = False
+        save_memory(MEMORY_FILE, memory)
+    
+    try:
+        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print(f"Synced {len(synced)} command(s)!")
+    except Exception as e:
+        print(e)
+    event_trigger.start()
+
+
+# スラッシュコマンド: ダイスを振る
+@bot.tree.command(name="dice",
+                description="サイコロを振る",
+                guild=discord.Object(id=GUILD_ID))
+async def dice(interaction: discord.Interaction, message: str):
+    result = random.choice(["成功！", "失敗……"])
+    await interaction.response.send_message(f"{message}\n判定結果: {result}")
+
+
+# メッセージに反応
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+
+    await bot.process_commands(message)
+
+    if not is_currently_active():
+        return
+
+    if message.channel.name != "living-room":
+        return
+
+    user_message = message.content
+    response_text = await get_gemini_response(user_message)
+    # シエルらしい応答
+    await message.channel.send(response_text)
+
+    # メモリに保存
+    memory["last_message"] = message.content
+    save_memory(MEMORY_FILE, memory)
+    
+        # ユーザーからのメッセージや他のBotが送ったメッセージがあったかどうか
+    # 他のメッセージがあればその時点でlast_message_timeを更新
+    if message.content:
+        last_message_time = time.time()
+
+
+if __name__ == "__main__":
+    try:
+        bot.run(TOKEN)  # Discord bot起動
+    except Exception as e:
+        print(f"Bot Error: {e}")
+        os.system("kill")
