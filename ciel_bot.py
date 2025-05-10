@@ -85,7 +85,7 @@ def generate_full_schedule(force_pattern=None):
     patterns = [
         {"type": "day_shift", "wake": (7, 9), "leave": (9, 10), "back": (18, 20), "sleep": (23, 1)},
         {"type": "night_shift", "wake": (12, 14), "leave": (20, 22), "back": (5, 6), "sleep": (6, 8)},
-        {"type": "off_day", "wake": (9, 12), "sleep": (1, 2)},
+        {"type": "off_day", "wake": (9, 12), "sleep": (1, 4)},
     ]
 
     pattern = next(p for p in patterns if p["type"] == force_pattern) if force_pattern else random.choice(patterns)
