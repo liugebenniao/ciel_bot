@@ -80,10 +80,12 @@ def generate_full_schedule():
     ]
     pattern = random.choice(patterns)
 
-    def rand_time(h1, h2):
-        h = random.randint(h1, h2)
-        m = random.choice([0, 15, 30, 45])
-        return f"{h:02}:{m:02}"
+def rand_time(h1, h2):
+    if h1 > h2:  # h1がh2より大きい場合に入れ替える
+        h1, h2 = h2, h1
+    h = random.randint(h1, h2)
+    m = random.choice([0, 15, 30, 45])
+    return f"{h:02}:{m:02}"
 
     schedule = {
         "pattern": pattern["type"],
