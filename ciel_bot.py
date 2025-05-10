@@ -164,7 +164,7 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
 
    if "today_schedule" not in memory or not memory["today_schedule"]:
-    generate_full_schedule(force_pattern="off_day")
+       generate_full_schedule(force_pattern="off_day")
 
     
     # 初回起動チェック
