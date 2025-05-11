@@ -71,7 +71,7 @@ async def get_gemini_response(user_message): try: model = genai.GenerativeModel(
 
 if "today_schedule" not in memory or not memory["today_schedule"]:
     generate_full_schedule(force_pattern="off_day")
-    await announce("きょうはおやすみだよ〜")
+    await announce("[off_day]")
 
 if memory.get("is_first_login", True):
     channel = discord.utils.get(bot.get_all_channels(), name="living-room")
