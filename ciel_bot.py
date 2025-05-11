@@ -14,7 +14,7 @@ PROMPT_FILE = "prompts/ciel.json" MEMORY_FILE = "memory/ciel.json" EVENT_FILE = 
 
 JST = timezone(timedelta(hours=9))
 
-last_message_time = 0 GOODBYE_KEYWORDS = ["おやすみ", "またね", "ばいばい", "さようなら", "おつかれ"]
+last_message_time = 0 GOODBYE_KEYWORDS = ["おやすみ", "またね", "ばいばい", "さようなら"]
 
 def is_goodbye_message(message): return any(word in message for word in GOODBYE_KEYWORDS)
 
